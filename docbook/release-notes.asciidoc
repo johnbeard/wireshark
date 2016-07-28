@@ -123,6 +123,7 @@ Nordic BLE Sniffer
 Ericsson A-bis TFP (Traffic Forwarding Protocol)
 Ericsson A-bis P-GSL
 vSocket
+USB serial
 
 --sort-and-group--
 
