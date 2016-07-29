@@ -71,6 +71,11 @@ static int hf_usbserial_baud_divisor = -1;
 
 static int hf_usbserial_reset_control = -1;
 
+static int hf_usbserial_status_cts = -1;
+static int hf_usbserial_status_dsr = -1;
+static int hf_usbserial_status_ri = -1;
+static int hf_usbserial_status_rlsd = -1;
+
 /* USB BULK fields */
 static int hf_usbserial_payload = -1;
 
@@ -99,6 +104,7 @@ static gint ett_usbserial = -1;
 
 #define FTDI_SIO_GET_LATENCY_TIMER_REQUEST_TYPE 0xC0
 #define FTDI_SIO_E2_READ_REQUEST_TYPE           0xC0
+#define FTDI_SIO_GET_MODEM_STATUS_REQUEST_TYPE  0xC0
 #define FTDI_SIO_SET_LATENCY_TIMER_REQUEST_TYPE 0x40
 #define FTDI_SIO_SET_DATA_REQUEST_TYPE          0x40
 #define FTDI_SIO_SET_MODEM_CTRL_REQUEST_TYPE    0x40
@@ -173,6 +179,13 @@ static const value_string enable_disable_vals[] = {
     {0x01, "Enabled"},
     {0, NULL}
 };
+
+static const value_string active_inactive_vals[] = {
+    {0x00, "Inactive"},
+    {0x01, "Active"},
+    {0, NULL}
+};
+
 
 /* Dissection function for some type of USB serial USB packet */
 typedef void (*usb_setup_dissector)(packet_info *pinfo, proto_tree *tree,
@@ -417,6 +430,39 @@ dissect_usbserial_reset(packet_info *pinfo _U_, proto_tree *tree,
     }
 }
 
+static void
+dissect_usbserial_get_modem_status(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    if (is_request) {
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
+        proto_tree_add_item(subtree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    } else {
+        proto_tree_add_item(tree, hf_usbserial_status_cts, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(tree, hf_usbserial_status_dsr, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(tree, hf_usbserial_status_ri, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(tree, hf_usbserial_status_rlsd, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+        /* offset += 1 */
+    }
+}
+
+
 typedef struct _usb_setup_dissector_table_t {
     guint8 request_type;
     guint8 request;
@@ -464,6 +510,11 @@ static const usb_setup_dissector_table_t setup_dissectors[] = {
     { FTDI_SIO_RESET_REQUEST_TYPE,
       FTDI_SIO_RESET,
       dissect_usbserial_reset,
+    },
+
+    { FTDI_SIO_GET_MODEM_STATUS_REQUEST_TYPE,
+      FTDI_SIO_GET_MODEM_STATUS,
+      dissect_usbserial_get_modem_status,
     },
 
     { 0, 0, NULL }
@@ -672,6 +723,22 @@ proto_register_usbserial(void)
 
         { &hf_usbserial_reset_control,
         { "Reset Control", "usbserial.setup.reset_control", FT_UINT16, BASE_HEX, VALS(reset_control_vals), 0x0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_status_cts,
+        { "CTS", "usbserial.status.cts", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x10,
+          NULL, HFILL }},
+
+        { &hf_usbserial_status_dsr,
+        { "DSR", "usbserial.status.dsr", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x20,
+          NULL, HFILL }},
+
+        { &hf_usbserial_status_ri,
+        { "Ring Indicator (RI)", "usbserial.status.ri", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x40,
+          NULL, HFILL }},
+
+        { &hf_usbserial_status_rlsd,
+        { "Receive Line Signal Detect (RLSD)", "usbserial.status.rlsd", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x80,
           NULL, HFILL }},
 
         { &hf_usbserial_payload,
