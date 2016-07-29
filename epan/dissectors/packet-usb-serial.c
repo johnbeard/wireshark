@@ -40,7 +40,7 @@ void proto_register_usbserial(void);
 
 static int proto_usbserial = -1;
 
-// USB URB fields
+/* USB CONTROL URB & Data fields */
 static int hf_usbserial_request = -1;
 static int hf_usbserial_value = -1;
 static int hf_usbserial_index = -1;
@@ -48,17 +48,42 @@ static int hf_usbserial_length = -1;
 static int hf_usbserial_zero = -1;
 static int hf_usbserial_port = -1;
 static int hf_usbserial_latency = -1;
+static int hf_usbserial_e2_addr = -1;
+static int hf_usbserial_e2_data = -1;
 
+static int hf_usbserial_data_bits = -1;
+static int hf_usbserial_data_parity = -1;
+static int hf_usbserial_data_stop_bits = -1;
+static int hf_usbserial_break = -1;
+
+static int hf_usbserial_dtr_state = -1;
+static int hf_usbserial_rts_state = -1;
+static int hf_usbserial_dtr_enable = -1;
+static int hf_usbserial_rts_enable = -1;
+
+static int hf_usbserial_output_handshake_rts_cts = -1;
+static int hf_usbserial_output_handshake_dtr_dsr = -1;
+static int hf_usbserial_xon_off_handshake = -1;
+static int hf_usbserial_xon_char = -1;
+static int hf_usbserial_xoff_char = -1;
+
+static int hf_usbserial_baud_divisor = -1;
+
+static int hf_usbserial_reset_control = -1;
+
+/* USB BULK fields */
 static int hf_usbserial_payload = -1;
 
+/* ETT subtree indices */
 static gint ett_usbserial_wValue = -1;
 static gint ett_usbserial_wIndex = -1;
 static gint ett_usbserial_wLength = -1;
+static gint ett_usbserial_data_characteristics = -1;
 static gint ett_usbserial = -1;
 
 /* Commands */
 #define FTDI_SIO_RESET                  0 /* Reset the port */
-#define FTDI_SIO_MODEM_CTRL             1 /* Set the modem control register */
+#define FTDI_SIO_SET_MODEM_CTRL         1 /* Set the modem control register */
 #define FTDI_SIO_SET_FLOW_CTRL          2 /* Set flow control register */
 #define FTDI_SIO_SET_BAUD_RATE          3 /* Set baud rate */
 #define FTDI_SIO_SET_DATA               4 /* Set the data characteristics of
@@ -70,12 +95,20 @@ static gint ett_usbserial = -1;
 #define FTDI_SIO_SET_LATENCY_TIMER      9 /* Set the latency timer */
 #define FTDI_SIO_GET_LATENCY_TIMER      10 /* Get the latency timer */
 
+#define FTDI_SIO_E2_READ 0x90
+
 #define FTDI_SIO_GET_LATENCY_TIMER_REQUEST_TYPE 0xC0
+#define FTDI_SIO_E2_READ_REQUEST_TYPE           0xC0
 #define FTDI_SIO_SET_LATENCY_TIMER_REQUEST_TYPE 0x40
+#define FTDI_SIO_SET_DATA_REQUEST_TYPE          0x40
+#define FTDI_SIO_SET_MODEM_CTRL_REQUEST_TYPE    0x40
+#define FTDI_SIO_SET_FLOW_CTRL_REQUEST_TYPE     0x40
+#define FTDI_SIO_SET_BAUD_RATE_REQUEST_TYPE     0x40
+#define FTDI_SIO_RESET_REQUEST_TYPE             0x40
 
 static const value_string setup_request_names_vals[] = {
     { FTDI_SIO_RESET,                  "RESET" },
-    { FTDI_SIO_MODEM_CTRL,             "MODEM_CTRL" },
+    { FTDI_SIO_SET_MODEM_CTRL,         "SET_MODEM_CTRL" },
     { FTDI_SIO_SET_FLOW_CTRL,          "SET_FLOW_CTRL" },
     { FTDI_SIO_SET_BAUD_RATE,          "SET_BAUD_RATE" },
     { FTDI_SIO_SET_DATA,               "SET_DATA" },
@@ -84,7 +117,61 @@ static const value_string setup_request_names_vals[] = {
     { FTDI_SIO_SET_ERROR_CHAR,         "SET_ERROR_CHAR" },
     { FTDI_SIO_SET_LATENCY_TIMER,      "SET_LATENCY_TIMER" },
     { FTDI_SIO_GET_LATENCY_TIMER,      "GET_LATENCY_TIMER" },
+    { FTDI_SIO_E2_READ,                "READ_E2_DATA" },
     { 0, NULL }
+};
+
+static const value_string parity_vals[] = {
+    {0x00, "None"},
+    {0x01, "Odd"},
+    {0x02, "Even"},
+    {0x03, "Mark"},
+    {0x04, "Space"},
+    {0,NULL}
+};
+
+static const value_string stop_bits_vals[] = {
+    {0x00, "1"},
+    {0x01, "1.5"},
+    {0x02, "2"},
+    {0,NULL}
+};
+
+static const value_string break_vals[] = {
+    {0x01, "TC ON (break)"},
+    {0x00, "TX OFF (normal)"},
+    {0,NULL}
+};
+
+static const value_string dtr_rts_state_vals[] = {
+    {0x00, "Reset"},
+    {0x01, "Set"},
+    {0, NULL}
+};
+
+static const value_string dtr_enable_vals[] = {
+    {0x00, "Ignore"},
+    {0x01, "Use RTS"},
+    {0, NULL}
+};
+
+static const value_string rts_enable_vals[] = {
+    {0x00, "Ignore"},
+    {0x01, "Use DTR"},
+    {0, NULL}
+};
+
+static const value_string reset_control_vals[] = {
+    {0x00, "Reset SIO"},
+    {0x01, "Purge RX Buffer"},
+    {0x02, "Purge TX Buffer"},
+    {0, NULL}
+};
+
+static const value_string enable_disable_vals[] = {
+    {0x00, "Disabled"},
+    {0x01, "Enabled"},
+    {0, NULL}
 };
 
 /* Dissection function for some type of USB serial USB packet */
@@ -149,10 +236,191 @@ dissect_usbserial_set_latency_timer(packet_info *pinfo _U_, proto_tree *tree,
     }
 }
 
+static void
+dissect_usbserial_read_e2_data(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    if (is_request) {
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+        proto_tree_add_item(subtree, hf_usbserial_e2_addr, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
+        proto_tree_add_item(subtree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    } else {
+        proto_tree_add_item(tree, hf_usbserial_e2_data, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    }
+}
+
+static void
+dissect_usbserial_set_data(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    if (is_request) {
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, hf_usbserial_data_bits, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_data_parity, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_data_stop_bits, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_break, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
+        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    } else {
+        /* no data */
+    }
+}
+
+static void
+dissect_usbserial_set_modem_ctrl(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    if (is_request) {
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, hf_usbserial_dtr_state, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_rts_state, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_dtr_enable, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_rts_enable, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
+        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    } else {
+        /* no data */
+    }
+}
+
+static void
+dissect_usbserial_set_flow_ctrl(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    if (is_request) {
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, hf_usbserial_xon_char, tvb, offset, 1, ENC_NA);
+        offset += 1;
+        proto_tree_add_item(subtree, hf_usbserial_xoff_char, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 1, ENC_NA);
+        offset += 1;
+        proto_tree_add_item(subtree, hf_usbserial_output_handshake_rts_cts, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_output_handshake_dtr_dsr, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+        proto_tree_add_item(subtree, hf_usbserial_xon_off_handshake, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+        offset += 1;
+
+        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
+        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    } else {
+        /* no data */
+    }
+}
+
+static void
+dissect_usbserial_set_baud_rate(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    if (is_request) {
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, hf_usbserial_baud_divisor, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
+        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    } else {
+        /* no data */
+    }
+}
+
+static void
+dissect_usbserial_reset(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    if (is_request) {
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, hf_usbserial_reset_control, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        offset += 2;
+
+        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
+        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        /*offset += 2;*/
+    } else {
+        /* no data */
+    }
+}
+
 typedef struct _usb_setup_dissector_table_t {
-	guint8 request_type;
-	guint8 request;
-	usb_setup_dissector dissector;
+    guint8 request_type;
+    guint8 request;
+    usb_setup_dissector dissector;
 } usb_setup_dissector_table_t;
 
 
@@ -166,6 +434,36 @@ static const usb_setup_dissector_table_t setup_dissectors[] = {
     { FTDI_SIO_SET_LATENCY_TIMER_REQUEST_TYPE,
       FTDI_SIO_SET_LATENCY_TIMER,
       dissect_usbserial_set_latency_timer
+    },
+
+    { FTDI_SIO_E2_READ_REQUEST_TYPE,
+      FTDI_SIO_E2_READ,
+      dissect_usbserial_read_e2_data
+    },
+
+    { FTDI_SIO_SET_DATA_REQUEST_TYPE,
+      FTDI_SIO_SET_DATA,
+      dissect_usbserial_set_data
+    },
+
+    { FTDI_SIO_SET_MODEM_CTRL_REQUEST_TYPE,
+      FTDI_SIO_SET_MODEM_CTRL,
+      dissect_usbserial_set_modem_ctrl
+    },
+
+    { FTDI_SIO_SET_FLOW_CTRL_REQUEST_TYPE,
+      FTDI_SIO_SET_FLOW_CTRL,
+      dissect_usbserial_set_flow_ctrl
+    },
+
+    { FTDI_SIO_SET_BAUD_RATE_REQUEST_TYPE,
+      FTDI_SIO_SET_BAUD_RATE,
+      dissect_usbserial_set_baud_rate,
+    },
+
+    { FTDI_SIO_RESET_REQUEST_TYPE,
+      FTDI_SIO_RESET,
+      dissect_usbserial_reset,
     },
 
     { 0, 0, NULL }
@@ -308,6 +606,74 @@ proto_register_usbserial(void)
         { "Latency (ms)", "usbserial.setup.latency", FT_UINT8, BASE_DEC, NULL, 0x0,
           NULL, HFILL }},
 
+        { &hf_usbserial_e2_addr,
+        { "E2 Address", "usbserial.setup.e2_addr", FT_UINT16, BASE_HEX, NULL, 0x0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_e2_data,
+        { "E2 Data", "usbserial.setup.e2_data", FT_UINT16, BASE_HEX, NULL, 0x0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_data_bits,
+        { "Data Bits", "usbserial.setup.data_bits", FT_UINT16, BASE_HEX, NULL, 0x00FF,
+          NULL, HFILL }},
+
+        { &hf_usbserial_data_parity,
+        { "Parity", "usbserial.setup.parity", FT_UINT16, BASE_HEX, VALS(parity_vals), 0x0F00,
+          NULL, HFILL }},
+
+        { &hf_usbserial_data_stop_bits,
+        { "Stop Bits", "usbserial.setup.stop_bits", FT_UINT16, BASE_DEC, VALS(stop_bits_vals), 0x3000,
+          NULL, HFILL }},
+
+        { &hf_usbserial_break,
+        { "Break", "usbserial.setup.break", FT_UINT16, BASE_HEX, VALS(break_vals), 0x4000,
+          NULL, HFILL }},
+
+        { &hf_usbserial_dtr_state,
+        { "DTR State", "usbserial.setup.dtr_state", FT_UINT16, BASE_HEX, VALS(dtr_rts_state_vals), 0x0001,
+          NULL, HFILL }},
+
+        { &hf_usbserial_rts_state,
+        { "RTS State", "usbserial.setup.rts_state", FT_UINT16, BASE_HEX, VALS(dtr_rts_state_vals), 0x0002,
+          NULL, HFILL }},
+
+        { &hf_usbserial_dtr_enable,
+        { "DTR State", "usbserial.setup.dtr_enable", FT_UINT16, BASE_HEX, VALS(dtr_enable_vals), 0x0100,
+          NULL, HFILL }},
+
+        { &hf_usbserial_rts_enable,
+        { "RTS State", "usbserial.setup.rts_enable", FT_UINT16, BASE_HEX, VALS(rts_enable_vals), 0x0200,
+          NULL, HFILL }},
+
+        { &hf_usbserial_output_handshake_rts_cts,
+        { "Output Handshake RTS/CTS", "usbserial.setup.handshake_rts_cts", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x01,
+          NULL, HFILL }},
+
+        { &hf_usbserial_output_handshake_dtr_dsr,
+        { "Output Handshake DTR/DSR", "usbserial.setup.handshake_dtr_dsr", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x02,
+          NULL, HFILL }},
+
+        { &hf_usbserial_xon_off_handshake,
+        { "Xon/Xoff Handshaking", "usbserial.setup.xon_xoff_handshake", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x04,
+          NULL, HFILL }},
+
+        { &hf_usbserial_xon_char,
+        { "Xon Character", "usbserial.setup.xon_char", FT_UINT8, BASE_HEX, NULL, 0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_xoff_char,
+        { "Xoff Character", "usbserial.setup.xoff_char", FT_UINT8, BASE_HEX, NULL, 0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_baud_divisor,
+        { "Baud Divisor", "usbserial.setup.baud_divisor", FT_UINT16, BASE_HEX, NULL, 0x0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_reset_control,
+        { "Reset Control", "usbserial.setup.reset_control", FT_UINT16, BASE_HEX, VALS(reset_control_vals), 0x0,
+          NULL, HFILL }},
+
         { &hf_usbserial_payload,
             {"Payload", "usbserial.payload", FT_BYTES, BASE_NONE, NULL,
                 0x0, NULL, HFILL }},
@@ -317,7 +683,8 @@ proto_register_usbserial(void)
         &ett_usbserial,
         &ett_usbserial_wIndex,
         &ett_usbserial_wValue,
-        &ett_usbserial_wLength
+        &ett_usbserial_wLength,
+        &ett_usbserial_data_characteristics
     };
 
     proto_usbserial = proto_register_protocol("USB serial", "usbserial", "usbserial");
