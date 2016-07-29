@@ -76,6 +76,11 @@ static int hf_usbserial_status_dsr = -1;
 static int hf_usbserial_status_ri = -1;
 static int hf_usbserial_status_rlsd = -1;
 
+static int hf_usbserial_event_char = -1;
+static int hf_usbserial_event_char_processing = -1;
+static int hf_usbserial_error_char = -1;
+static int hf_usbserial_error_char_processing = -1;
+
 /* USB BULK fields */
 static int hf_usbserial_payload = -1;
 
@@ -111,6 +116,8 @@ static gint ett_usbserial = -1;
 #define FTDI_SIO_SET_FLOW_CTRL_REQUEST_TYPE     0x40
 #define FTDI_SIO_SET_BAUD_RATE_REQUEST_TYPE     0x40
 #define FTDI_SIO_RESET_REQUEST_TYPE             0x40
+#define FTDI_SIO_SET_EVENT_CHAR_REQUEST_TYPE    0x40
+#define FTDI_SIO_SET_ERROR_CHAR_REQUEST_TYPE    0x40
 
 static const value_string setup_request_names_vals[] = {
     { FTDI_SIO_RESET,                  "RESET" },
@@ -192,29 +199,51 @@ typedef void (*usb_setup_dissector)(packet_info *pinfo, proto_tree *tree,
         tvbuff_t *tvb, int offset, gboolean is_request,
         usb_trans_info_t *usb_trans_info, usb_conv_info_t *usb_conv_info);
 
+
+/* Helper for adding a USB wValue field which contains a whole value */
+static void
+tree_add_wValue_field(proto_tree *tree, tvbuff_t *tvb, int field_hf, int *offset)
+{
+    proto_item *item;
+    proto_tree *subtree;
+
+    item = proto_tree_add_item(tree, hf_usbserial_index, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+    proto_tree_add_item(subtree, field_hf, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+}
+
+
+/* Helper for adding the USB wLength field */
+static void
+tree_add_wLength_field(proto_tree *tree, tvbuff_t *tvb, int *offset)
+{
+    proto_tree_add_item(tree, hf_usbserial_length, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+}
+
+/* Helper for adding a USB wIndex containing the port */
+static void
+tree_add_wIndex_port_field(proto_tree *tree, tvbuff_t *tvb, int *offset)
+{
+    proto_item *item;
+    proto_tree *subtree;
+
+    item = proto_tree_add_item(tree, hf_usbserial_index, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
+    proto_tree_add_item(subtree, hf_usbserial_port, tvb, *offset, 2, ENC_LITTLE_ENDIAN);
+    *offset += 2;
+}
+
 static void
 dissect_usbserial_get_latency_timer(packet_info *pinfo _U_, proto_tree *tree,
         tvbuff_t *tvb, int offset, gboolean is_request,
         usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
 {
-    proto_item *item = NULL;
-    proto_tree *subtree = NULL;
-
     if (is_request) {
-        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
-        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wValue_field(tree, tvb, hf_usbserial_zero, &offset);
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         proto_tree_add_item(tree, hf_usbserial_latency, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         /*offset += 2;*/
@@ -226,24 +255,10 @@ dissect_usbserial_set_latency_timer(packet_info *pinfo _U_, proto_tree *tree,
         tvbuff_t *tvb, int offset, gboolean is_request,
         usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
 {
-    proto_item *item = NULL;
-    proto_tree *subtree = NULL;
-
     if (is_request) {
-        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
-        proto_tree_add_item(subtree, hf_usbserial_latency, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
-        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wValue_field(tree, tvb, hf_usbserial_latency, &offset);
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         /* no data */
     }
@@ -258,20 +273,14 @@ dissect_usbserial_read_e2_data(packet_info *pinfo _U_, proto_tree *tree,
     proto_tree *subtree = NULL;
 
     if (is_request) {
-        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
+        tree_add_wValue_field(tree, tvb, hf_usbserial_zero, &offset);
 
         item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
         proto_tree_add_item(subtree, hf_usbserial_e2_addr, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         proto_tree_add_item(tree, hf_usbserial_e2_data, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         /*offset += 2;*/
@@ -295,15 +304,8 @@ dissect_usbserial_set_data(packet_info *pinfo _U_, proto_tree *tree,
         proto_tree_add_item(subtree, hf_usbserial_break, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
-        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
-        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         /* no data */
     }
@@ -326,15 +328,8 @@ dissect_usbserial_set_modem_ctrl(packet_info *pinfo _U_, proto_tree *tree,
         proto_tree_add_item(subtree, hf_usbserial_rts_enable, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset += 2;
 
-        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
-        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         /* no data */
     }
@@ -365,10 +360,7 @@ dissect_usbserial_set_flow_ctrl(packet_info *pinfo _U_, proto_tree *tree,
         proto_tree_add_item(subtree, hf_usbserial_xon_off_handshake, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         offset += 1;
 
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         /* no data */
     }
@@ -379,24 +371,10 @@ dissect_usbserial_set_baud_rate(packet_info *pinfo _U_, proto_tree *tree,
         tvbuff_t *tvb, int offset, gboolean is_request,
         usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
 {
-    proto_item *item = NULL;
-    proto_tree *subtree = NULL;
-
     if (is_request) {
-        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
-        proto_tree_add_item(subtree, hf_usbserial_baud_divisor, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
-        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wValue_field(tree, tvb, hf_usbserial_baud_divisor, &offset);
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         /* no data */
     }
@@ -407,24 +385,10 @@ dissect_usbserial_reset(packet_info *pinfo _U_, proto_tree *tree,
         tvbuff_t *tvb, int offset, gboolean is_request,
         usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
 {
-    proto_item *item = NULL;
-    proto_tree *subtree = NULL;
-
     if (is_request) {
-        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
-        proto_tree_add_item(subtree, hf_usbserial_reset_control, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
-        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wValue_field(tree, tvb, hf_usbserial_reset_control, &offset);
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         /* no data */
     }
@@ -435,24 +399,10 @@ dissect_usbserial_get_modem_status(packet_info *pinfo _U_, proto_tree *tree,
         tvbuff_t *tvb, int offset, gboolean is_request,
         usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
 {
-    proto_item *item = NULL;
-    proto_tree *subtree = NULL;
-
     if (is_request) {
-        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
-        proto_tree_add_item(subtree, hf_usbserial_zero, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wIndex);
-        proto_tree_add_item(subtree, hf_usbserial_port, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        offset += 2;
-
-        item = proto_tree_add_item(tree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        subtree = proto_item_add_subtree(item, ett_usbserial_wLength);
-        proto_tree_add_item(subtree, hf_usbserial_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
-        /*offset += 2;*/
+        tree_add_wValue_field(tree, tvb, hf_usbserial_zero, &offset);
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
     } else {
         proto_tree_add_item(tree, hf_usbserial_status_cts, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         proto_tree_add_item(tree, hf_usbserial_status_dsr, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -462,6 +412,35 @@ dissect_usbserial_get_modem_status(packet_info *pinfo _U_, proto_tree *tree,
     }
 }
 
+
+
+static void
+dissect_usbserial_set_event_error_char(packet_info *pinfo _U_, proto_tree *tree,
+        tvbuff_t *tvb, int offset, gboolean is_request,
+        usb_trans_info_t *usb_trans_info _U_, usb_conv_info_t *usb_conv_info _U_)
+{
+    proto_item *item = NULL;
+    proto_tree *subtree = NULL;
+
+    gboolean is_event = usb_trans_info->setup.request == FTDI_SIO_SET_EVENT_CHAR;
+
+    if (is_request) {
+        int char_hf = is_event ? hf_usbserial_event_char : hf_usbserial_error_char;
+        int char_proc_hf = is_event ? hf_usbserial_event_char_processing : hf_usbserial_error_char_processing;
+
+        item = proto_tree_add_item(tree, hf_usbserial_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+        subtree = proto_item_add_subtree(item, ett_usbserial_wValue);
+        proto_tree_add_item(subtree, char_hf, tvb, offset, 1, ENC_NA);
+        offset += 1;
+        proto_tree_add_item(subtree, char_proc_hf, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        tree_add_wIndex_port_field(tree, tvb, &offset);
+        tree_add_wLength_field(tree, tvb, &offset);
+    } else {
+        /* no data */
+    }
+}
 
 typedef struct _usb_setup_dissector_table_t {
     guint8 request_type;
@@ -515,6 +494,16 @@ static const usb_setup_dissector_table_t setup_dissectors[] = {
     { FTDI_SIO_GET_MODEM_STATUS_REQUEST_TYPE,
       FTDI_SIO_GET_MODEM_STATUS,
       dissect_usbserial_get_modem_status,
+    },
+
+    { FTDI_SIO_SET_EVENT_CHAR_REQUEST_TYPE,
+      FTDI_SIO_SET_EVENT_CHAR,
+      dissect_usbserial_set_event_error_char,
+    },
+
+    { FTDI_SIO_SET_ERROR_CHAR_REQUEST_TYPE,
+      FTDI_SIO_SET_ERROR_CHAR,
+      dissect_usbserial_set_event_error_char,
     },
 
     { 0, 0, NULL }
@@ -739,6 +728,22 @@ proto_register_usbserial(void)
 
         { &hf_usbserial_status_rlsd,
         { "Receive Line Signal Detect (RLSD)", "usbserial.status.rlsd", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x80,
+          NULL, HFILL }},
+
+        { &hf_usbserial_event_char,
+        { "Event Character", "usbserial.setup.event_char", FT_UINT8, BASE_HEX, NULL, 0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_event_char_processing,
+        { "Event Character Processing", "usbserial.setup.event_char_processing", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x01,
+          NULL, HFILL }},
+
+        { &hf_usbserial_error_char,
+        { "Error Character", "usbserial.setup.error_char", FT_UINT8, BASE_HEX, NULL, 0,
+          NULL, HFILL }},
+
+        { &hf_usbserial_error_char_processing,
+        { "Error Character Processing", "usbserial.setup.error_char_processing", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x01,
           NULL, HFILL }},
 
         { &hf_usbserial_payload,
