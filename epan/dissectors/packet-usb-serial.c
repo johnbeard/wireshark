@@ -1,9 +1,6 @@
 /* packet-vsock.c
- * Routines for AF_VSOCK dissection
- * Copyright 2016, Gerard Garcia <ggarcia@deic.uab.cat>
- *
- * Header definition:
- * https://github.com/GerardGarcia/linux/blob/vsockmon/include/uapi/linux/vsockmon.h
+ * Routines for FTD USB Serial dissection
+ * Copyright 2016, John Beard <john.j.beard@gmail.com>
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -25,8 +22,12 @@
  */
 
 /*
- * The AF_VSOCK socket allows zero-configuration communication between guests
- * and hypervisors using the standard socket API.
+ * The FTDI USB protocol allows a host to set up and transfer data
+ * via a compatible USB-Serial adapter.
+ *
+ * Much of the protocol was derived from the Linux kernel ftdi_sio
+ * driver:
+ *    drivers/usb/serial/ftdi_sio.c
  */
 
 #include <config.h>
@@ -616,139 +617,139 @@ void
 proto_register_usbserial(void)
 {
     static hf_register_info hf[] = {
-        /* USB HUB specific requests */
+        /* USB Serial specific requests */
         { &hf_usbserial_request,
         { "bRequest", "usbserial.setup.bRequest", FT_UINT8, BASE_HEX,
-            VALS(setup_request_names_vals), 0x0,
-            NULL, HFILL }},
+            VALS(setup_request_names_vals), 0x0, NULL, HFILL }},
 
         { &hf_usbserial_value,
-        { "wValue", "usbserial.setup.wValue", FT_UINT16, BASE_HEX, NULL, 0x0,
-          NULL, HFILL }},
+        { "wValue", "usbserial.setup.wValue", FT_UINT16, BASE_HEX,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_index,
-        { "wIndex", "usbserial.setup.wIndex", FT_UINT16, BASE_DEC, NULL, 0x0,
-          NULL, HFILL }},
+        { "wIndex", "usbserial.setup.wIndex", FT_UINT16, BASE_DEC,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_length,
-        { "wLength", "usbserial.setup.wLength", FT_UINT16, BASE_DEC, NULL, 0x0,
-          NULL, HFILL }},
+        { "wLength", "usbserial.setup.wLength", FT_UINT16, BASE_DEC,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_zero,
-        { "(zero)", "usbserial.setup.zero", FT_UINT8, BASE_DEC, NULL, 0x0,
-          NULL, HFILL }},
+        { "(zero)", "usbserial.setup.zero", FT_UINT8, BASE_DEC,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_port,
-        { "Port", "usbserial.setup.Port", FT_UINT8, BASE_DEC, NULL, 0x0,
-          NULL, HFILL }},
+        { "Port", "usbserial.setup.Port", FT_UINT8, BASE_DEC,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_latency,
-        { "Latency (ms)", "usbserial.setup.latency", FT_UINT8, BASE_DEC, NULL, 0x0,
-          NULL, HFILL }},
+        { "Latency (ms)", "usbserial.setup.latency", FT_UINT8, BASE_DEC,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_e2_addr,
-        { "E2 Address", "usbserial.setup.e2_addr", FT_UINT16, BASE_HEX, NULL, 0x0,
-          NULL, HFILL }},
+        { "E2 Address", "usbserial.setup.e2_addr", FT_UINT16, BASE_HEX,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_e2_data,
-        { "E2 Data", "usbserial.setup.e2_data", FT_UINT16, BASE_HEX, NULL, 0x0,
-          NULL, HFILL }},
+        { "E2 Data", "usbserial.setup.e2_data", FT_UINT16, BASE_HEX,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_data_bits,
-        { "Data Bits", "usbserial.setup.data_bits", FT_UINT16, BASE_HEX, NULL, 0x00FF,
-          NULL, HFILL }},
+        { "Data Bits", "usbserial.setup.data_bits", FT_UINT16, BASE_HEX,
+            NULL, 0x00FF, NULL, HFILL }},
 
         { &hf_usbserial_data_parity,
-        { "Parity", "usbserial.setup.parity", FT_UINT16, BASE_HEX, VALS(parity_vals), 0x0F00,
-          NULL, HFILL }},
+        { "Parity", "usbserial.setup.parity", FT_UINT16, BASE_HEX,
+            VALS(parity_vals), 0x0F00, NULL, HFILL }},
 
         { &hf_usbserial_data_stop_bits,
-        { "Stop Bits", "usbserial.setup.stop_bits", FT_UINT16, BASE_DEC, VALS(stop_bits_vals), 0x3000,
-          NULL, HFILL }},
+        { "Stop Bits", "usbserial.setup.stop_bits", FT_UINT16, BASE_DEC,
+            VALS(stop_bits_vals), 0x3000, NULL, HFILL }},
 
         { &hf_usbserial_break,
-        { "Break", "usbserial.setup.break", FT_UINT16, BASE_HEX, VALS(break_vals), 0x4000,
-          NULL, HFILL }},
+        { "Break", "usbserial.setup.break", FT_UINT16, BASE_HEX,
+            VALS(break_vals), 0x4000, NULL, HFILL }},
 
         { &hf_usbserial_dtr_state,
-        { "DTR State", "usbserial.setup.dtr_state", FT_UINT16, BASE_HEX, VALS(dtr_rts_state_vals), 0x0001,
-          NULL, HFILL }},
+        { "DTR State", "usbserial.setup.dtr_state", FT_UINT16, BASE_HEX,
+            VALS(dtr_rts_state_vals), 0x0001, NULL, HFILL }},
 
         { &hf_usbserial_rts_state,
-        { "RTS State", "usbserial.setup.rts_state", FT_UINT16, BASE_HEX, VALS(dtr_rts_state_vals), 0x0002,
-          NULL, HFILL }},
+        { "RTS State", "usbserial.setup.rts_state", FT_UINT16, BASE_HEX,
+            VALS(dtr_rts_state_vals), 0x0002, NULL, HFILL }},
 
         { &hf_usbserial_dtr_enable,
-        { "DTR State", "usbserial.setup.dtr_enable", FT_UINT16, BASE_HEX, VALS(dtr_enable_vals), 0x0100,
-          NULL, HFILL }},
+        { "DTR State", "usbserial.setup.dtr_enable", FT_UINT16, BASE_HEX,
+            VALS(dtr_enable_vals), 0x0100, NULL, HFILL }},
 
         { &hf_usbserial_rts_enable,
-        { "RTS State", "usbserial.setup.rts_enable", FT_UINT16, BASE_HEX, VALS(rts_enable_vals), 0x0200,
-          NULL, HFILL }},
+        { "RTS State", "usbserial.setup.rts_enable", FT_UINT16, BASE_HEX,
+            VALS(rts_enable_vals), 0x0200, NULL, HFILL }},
 
         { &hf_usbserial_output_handshake_rts_cts,
-        { "Output Handshake RTS/CTS", "usbserial.setup.handshake_rts_cts", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x01,
-          NULL, HFILL }},
+        { "Output Handshake RTS/CTS", "usbserial.setup.handshake_rts_cts", FT_UINT8, BASE_HEX,
+            VALS(enable_disable_vals), 0x01, NULL, HFILL }},
 
         { &hf_usbserial_output_handshake_dtr_dsr,
-        { "Output Handshake DTR/DSR", "usbserial.setup.handshake_dtr_dsr", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x02,
-          NULL, HFILL }},
+        { "Output Handshake DTR/DSR", "usbserial.setup.handshake_dtr_dsr", FT_UINT8, BASE_HEX,
+            VALS(enable_disable_vals), 0x02, NULL, HFILL }},
 
         { &hf_usbserial_xon_off_handshake,
-        { "Xon/Xoff Handshaking", "usbserial.setup.xon_xoff_handshake", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x04,
-          NULL, HFILL }},
+        { "Xon/Xoff Handshaking", "usbserial.setup.xon_xoff_handshake", FT_UINT8, BASE_HEX,
+            VALS(enable_disable_vals), 0x04, NULL, HFILL }},
 
         { &hf_usbserial_xon_char,
-        { "Xon Character", "usbserial.setup.xon_char", FT_UINT8, BASE_HEX, NULL, 0,
-          NULL, HFILL }},
+        { "Xon Character", "usbserial.setup.xon_char", FT_UINT8, BASE_HEX,
+            NULL, 0, NULL, HFILL }},
 
         { &hf_usbserial_xoff_char,
-        { "Xoff Character", "usbserial.setup.xoff_char", FT_UINT8, BASE_HEX, NULL, 0,
-          NULL, HFILL }},
+        { "Xoff Character", "usbserial.setup.xoff_char", FT_UINT8, BASE_HEX,
+            NULL, 0, NULL, HFILL }},
 
         { &hf_usbserial_baud_divisor,
-        { "Baud Divisor", "usbserial.setup.baud_divisor", FT_UINT16, BASE_HEX, NULL, 0x0,
-          NULL, HFILL }},
+        { "Baud Divisor", "usbserial.setup.baud_divisor", FT_UINT16, BASE_HEX,
+            NULL, 0x0, NULL, HFILL }},
 
         { &hf_usbserial_reset_control,
-        { "Reset Control", "usbserial.setup.reset_control", FT_UINT16, BASE_HEX, VALS(reset_control_vals), 0x0,
-          NULL, HFILL }},
+        { "Reset Control", "usbserial.setup.reset_control", FT_UINT16, BASE_HEX,
+            VALS(reset_control_vals), 0x0, NULL, HFILL }},
 
         { &hf_usbserial_status_cts,
-        { "CTS", "usbserial.status.cts", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x10,
-          NULL, HFILL }},
+        { "CTS", "usbserial.status.cts", FT_UINT8, BASE_HEX,
+            VALS(active_inactive_vals), 0x10, NULL, HFILL }},
 
         { &hf_usbserial_status_dsr,
-        { "DSR", "usbserial.status.dsr", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x20,
-          NULL, HFILL }},
+        { "DSR", "usbserial.status.dsr", FT_UINT8, BASE_HEX,
+            VALS(active_inactive_vals), 0x20, NULL, HFILL }},
 
         { &hf_usbserial_status_ri,
-        { "Ring Indicator (RI)", "usbserial.status.ri", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x40,
-          NULL, HFILL }},
+        { "Ring Indicator (RI)", "usbserial.status.ri", FT_UINT8, BASE_HEX,
+            VALS(active_inactive_vals), 0x40, NULL, HFILL }},
 
         { &hf_usbserial_status_rlsd,
-        { "Receive Line Signal Detect (RLSD)", "usbserial.status.rlsd", FT_UINT8, BASE_HEX, VALS(active_inactive_vals), 0x80,
-          NULL, HFILL }},
+        { "Receive Line Signal Detect (RLSD)", "usbserial.status.rlsd", FT_UINT8, BASE_HEX,
+            VALS(active_inactive_vals), 0x80, NULL, HFILL }},
 
         { &hf_usbserial_event_char,
-        { "Event Character", "usbserial.setup.event_char", FT_UINT8, BASE_HEX, NULL, 0,
-          NULL, HFILL }},
+        { "Event Character", "usbserial.setup.event_char", FT_UINT8, BASE_HEX,
+            NULL, 0, NULL, HFILL }},
 
         { &hf_usbserial_event_char_processing,
-        { "Event Character Processing", "usbserial.setup.event_char_processing", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x01,
-          NULL, HFILL }},
+        { "Event Character Processing", "usbserial.setup.event_char_processing", FT_UINT8, BASE_HEX,
+            VALS(enable_disable_vals), 0x01, NULL, HFILL }},
 
         { &hf_usbserial_error_char,
-        { "Error Character", "usbserial.setup.error_char", FT_UINT8, BASE_HEX, NULL, 0,
-          NULL, HFILL }},
+        { "Error Character", "usbserial.setup.error_char", FT_UINT8, BASE_HEX,
+            NULL, 0, NULL, HFILL }},
 
         { &hf_usbserial_error_char_processing,
-        { "Error Character Processing", "usbserial.setup.error_char_processing", FT_UINT8, BASE_HEX, VALS(enable_disable_vals), 0x01,
-          NULL, HFILL }},
+        { "Error Character Processing", "usbserial.setup.error_char_processing", FT_UINT8, BASE_HEX,
+            VALS(enable_disable_vals), 0x01, NULL, HFILL }},
 
-        { &hf_usbserial_payload,
-            {"Payload", "usbserial.payload", FT_BYTES, BASE_NONE, NULL,
-                0x0, NULL, HFILL }},
+        { &hf_usbserial_payload, {
+            "Payload", "usbserial.payload", FT_BYTES, BASE_NONE,
+            NULL, 0x0, NULL, HFILL
+        }},
     };
 
     static gint *ett[] = {
